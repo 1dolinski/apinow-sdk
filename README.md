@@ -1,6 +1,6 @@
 # ApiNow SDK
 
-The endpoint vending machine - SDK for interacting with ApiNow endpoints.
+The endpoint vending machine - SDK for interacting with ApiNow endpoints. This is the official SDK for [ApiNow.fun](https://apinow.fun).
 
 ## Installation
 
