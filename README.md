@@ -29,7 +29,7 @@ Fetches endpoint metadata like required ETH amount and wallet address.
 ```ts
 const info = await apiNow.info('https://apinow.fun/api/endpoints/my-endpoint');
 // Returns: { 
-//   requiredEth: "0.1",
+//   requiredAmount: "0.1",
 //   walletAddress: "0x123...", 
 //   httpMethod: "POST" 
 // }

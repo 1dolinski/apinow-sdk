@@ -7,7 +7,7 @@ interface TxResponseOptions {
 }
 
 interface InfoResponse {
-  requiredEth: string;
+  requiredAmount: string;
   walletAddress: string;
   httpMethod: string;
   tokenAddress?: string;
@@ -121,7 +121,7 @@ class ApiNow {
     opts: TxResponseOptions = {}
   ): Promise<any> {
     const info = await this.info(endpoint);
-    const amount = ethers.parseEther(info.requiredEth);
+    const amount = ethers.parseEther(info.requiredAmount);
     
     const txHash = await this.buy(
       info.walletAddress,
