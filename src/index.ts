@@ -10,6 +10,7 @@ interface InfoResponse {
   requiredEth: string;
   walletAddress: string;
   httpMethod: string;
+  tokenAddress?: string;
 }
 
 class ApiNow {
@@ -31,7 +32,8 @@ class ApiNow {
     walletAddress: string,
     amount: bigint,
     pkey: string,
-    rpc: string
+    rpc: string,
+    tokenAddress?: string
   ): Promise<string> {
     if (!rpc || typeof rpc !== 'string') {
       throw new Error('Invalid RPC URL');
@@ -56,21 +58,25 @@ class ApiNow {
         ? 30000
         : 21000;
 
-      const tx = await wallet.sendTransaction({
-        to: walletAddress,
-        value: amount,
-        type: 2,
-        maxFeePerGas: ethers.parseUnits('0.1', 'gwei'),
-        maxPriorityFeePerGas: ethers.parseUnits('0.1', 'gwei'),
-        gasLimit,
-        nonce
-      });
-
-      console.log('tx:', JSON.stringify(tx));
-      console.log('Transaction sent:', tx.hash);
-      
-      return tx.hash;
-      
+      if (tokenAddress) {
+        // ERC20 transfer
+        const abi = ["function transfer(address to, uint256 amount) returns (bool)"];
+        const tokenContract = new ethers.Contract(tokenAddress, abi, wallet);
+        const tx = await tokenContract.transfer(walletAddress, amount);
+        return tx.hash;
+      } else {
+        // Native ETH transfer
+        const tx = await wallet.sendTransaction({
+          to: walletAddress,
+          value: amount,
+          type: 2,
+          maxFeePerGas: ethers.parseUnits('0.1', 'gwei'),
+          maxPriorityFeePerGas: ethers.parseUnits('0.1', 'gwei'),
+          gasLimit,
+          nonce
+        });
+        return tx.hash;
+      }
     } catch (error: unknown) {
       console.error('Detailed error:', error);
       throw new Error(
@@ -121,7 +127,8 @@ class ApiNow {
       info.walletAddress,
       amount,
       pkey,
-      rpc
+      rpc,
+      info.tokenAddress
     );
 
     console.log('infoBuyResponse:', { endpoint, txHash, ...opts });
