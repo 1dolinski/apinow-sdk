@@ -1,6 +1,13 @@
 # ApiNow SDK
 
-The endpoint vending machine - SDK for interacting with ApiNow endpoints. This is the official SDK for [ApiNow.fun](https://apinow.fun).
+A TypeScript SDK for interacting with ApiNow endpoints, supporting Ethereum (including Base), and Solana chains.
+
+## Features
+
+- Multi-chain support (Ethereum, Base, Solana)
+- Token transfers (ERC20 on ETH/Base, SPL on Solana)
+- Fast mode for quicker transaction processing
+- TypeScript types for better development experience
 
 ## Installation
 
@@ -8,77 +15,127 @@ The endpoint vending machine - SDK for interacting with ApiNow endpoints. This i
 npm install apinow-sdk
 ```
 
-## Quick Start
+## Usage
 
-```ts
+### Basic Example
+
+```typescript
 import apiNow from 'apinow-sdk';
 
-// One-shot purchase and response
+// Get endpoint info
+const info = await apiNow.info('https://apinow.fun/api/endpoints/your-endpoint');
+
+// Send payment and get response
 const response = await apiNow.infoBuyResponse(
-  'https://apinow.fun/api/endpoints/my-endpoint',
-  '0x123...private-key',
-  'https://eth-mainnet.g.alchemy.com/v2/YOUR-API-KEY'
+  'https://apinow.fun/api/endpoints/your-endpoint',
+  'YOUR_PRIVATE_KEY',
+  'YOUR_RPC_URL'
+);
+```
+
+### Fast Mode
+
+Fast mode skips transaction confirmation and only waits for the transaction to be in the mempool. This provides much faster responses but slightly less security:
+
+```typescript
+const response = await apiNow.infoBuyResponse(
+  'https://apinow.fun/api/endpoints/your-endpoint',
+  'YOUR_PRIVATE_KEY',
+  'YOUR_RPC_URL',
+  { fastMode: true }
+);
+```
+
+### Chain-Specific Examples
+
+#### Ethereum/Base
+
+```typescript
+// Native ETH/BASE transfer
+const txHash = await apiNow.buy(
+  'RECIPIENT_ADDRESS',
+  ethers.parseEther('0.1'),
+  'YOUR_PRIVATE_KEY',
+  'YOUR_RPC_URL',
+  'eth'
+);
+
+// ERC20 token transfer
+const txHash = await apiNow.buy(
+  'RECIPIENT_ADDRESS',
+  ethers.parseUnits('100', 18), // Use appropriate decimals
+  'YOUR_PRIVATE_KEY',
+  'YOUR_RPC_URL',
+  'eth',
+  'TOKEN_ADDRESS'
+);
+```
+
+#### Solana
+
+```typescript
+// Native SOL transfer
+const txHash = await apiNow.buy(
+  'RECIPIENT_ADDRESS',
+  BigInt(LAMPORTS_PER_SOL), // 1 SOL
+  'YOUR_PRIVATE_KEY',
+  'YOUR_RPC_URL',
+  'sol'
+);
+
+// SPL token transfer
+const txHash = await apiNow.buy(
+  'RECIPIENT_ADDRESS',
+  BigInt(1000000), // Amount in raw units (e.g. 1.0 for 6 decimals)
+  'YOUR_PRIVATE_KEY',
+  'YOUR_RPC_URL',
+  'sol',
+  'TOKEN_ADDRESS'
 );
 ```
 
 ## API Reference
 
-### info(endpoint)
-Fetches endpoint metadata like required ETH amount and wallet address.
+### `info(endpoint: string): Promise<InfoResponse>`
 
-```ts
-const info = await apiNow.info('https://apinow.fun/api/endpoints/my-endpoint');
-// Returns: { 
-//   requiredAmount: "0.1",
-//   walletAddress: "0x123...", 
-//   httpMethod: "POST" 
-// }
+Gets information about an endpoint.
+
+### `buy(walletAddress: string, amount: bigint, pkey: string, rpc: string, chain?: 'eth' | 'sol', tokenAddress?: string, fastMode?: boolean): Promise<string>`
+
+Sends a payment transaction. For tokens, provide the amount in raw units (e.g. wei for ERC20, raw units for SPL).
+
+### `txResponse(endpoint: string, txHash: string, opts?: TxResponseOptions): Promise<any>`
+
+Gets the API response for a transaction.
+
+### `infoBuyResponse(endpoint: string, pkey: string, rpc: string, opts?: TxResponseOptions & { fastMode?: boolean }): Promise<any>`
+
+Combines info, buy, and txResponse into a single call.
+
+## Types
+
+```typescript
+interface TxResponseOptions {
+  method?: string;
+  data?: any;
+}
+
+interface InfoResponse {
+  requiredAmount: string;
+  walletAddress: string;
+  httpMethod: string;
+  tokenAddress?: string;
+  chain: 'eth' | 'sol';
+}
 ```
 
-### buy(walletAddress, amount, privateKey, rpcUrl)
-Sends an ETH transaction to purchase endpoint access.
+## Error Handling
 
-```ts
-const txHash = await apiNow.buy(
-  "0x123...wallet",  // Destination wallet
-  ethers.parseEther("0.1"), // Amount in ETH
-  "0x456...private-key", // Your private key
-  "https://eth-mainnet.g.alchemy.com/v2/YOUR-API-KEY" // RPC URL
-);
-```
-
-### txResponse(endpoint, txHash, options?)
-Gets the API response using your transaction hash.
-
-```ts
-const response = await apiNow.txResponse(
-  "https://apinow.fun/api/endpoints/my-endpoint",
-  "0x789...txhash",
-  {
-    method: "POST", // Optional, defaults to GET
-    data: { foo: "bar" } // Optional request body
-  }
-);
-```
-
-### infoBuyResponse(endpoint, privateKey, rpcUrl, options?)
-Combines all steps: fetches info, sends payment, and gets response.
-
-```ts
-// Complete example with all parameters
-const response = await apiNow.infoBuyResponse(
-  "https://apinow.fun/api/endpoints/my-endpoint",
-  "0x123...private-key",
-  "https://eth-mainnet.g.alchemy.com/v2/YOUR-API-KEY",
-  {
-    method: "POST", // Optional, defaults to endpoint's httpMethod
-    data: { // Optional request body
-      query: "example",
-      limit: 10
-    }
-  }
-);
-```
+The SDK throws descriptive errors for various failure cases:
+- Invalid endpoint URLs
+- Transaction failures
+- Network issues
+- Invalid addresses or amounts
 
 ## License
 
