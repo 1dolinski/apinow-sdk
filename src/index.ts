@@ -145,8 +145,11 @@ class SolanaHandler implements ChainHandler {
               }, 'processed');
               console.log('Transaction confirmed!');
               return signature;
-            } catch (confirmError) {
-              console.log('Confirmation failed:', confirmError.message);
+            } catch (confirmError: unknown) {
+              const errorMessage = confirmError instanceof Error 
+                ? confirmError.message 
+                : 'Unknown confirmation error';
+              console.log('Confirmation failed:', errorMessage);
               if (confirmationAttempt === 5) throw confirmError;
               confirmationAttempt++;
               await new Promise(resolve => setTimeout(resolve, 1000));
@@ -155,8 +158,11 @@ class SolanaHandler implements ChainHandler {
         }
 
         return signature;
-      } catch (error) {
-        console.log('Attempt failed:', error.message);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : 'Unknown error';
+        console.log('Attempt failed:', errorMessage);
         lastError = error;
         if (attempt < maxAttempts) {
           console.log('Waiting 500ms before retry...');
