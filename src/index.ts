@@ -27,7 +27,7 @@ interface InfoResponse {
   walletAddress: string;
   httpMethod: string;
   tokenAddress?: string;
-  chain: 'eth' | 'sol';
+  chain: 'eth' | 'sol' | 'base';
 }
 
 interface ChainHandler {
@@ -243,7 +243,8 @@ class SolanaHandler implements ChainHandler {
 class ApiNow {
   private handlers: { [key: string]: ChainHandler } = {
     eth: new EthereumHandler(),
-    sol: new SolanaHandler()
+    sol: new SolanaHandler(),
+    base: new EthereumHandler()
   };
 
   async info(endpoint: string): Promise<InfoResponse> {
@@ -265,7 +266,7 @@ class ApiNow {
     amount: bigint,
     pkey: string,
     rpc: string,
-    chain: 'eth' | 'sol' = 'eth',
+    chain: 'eth' | 'sol' | 'base' = 'eth',
     tokenAddress?: string,
     fastMode?: boolean
   ): Promise<string> {
