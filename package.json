@@ -1,6 +1,6 @@
 {
   "name": "apinow-sdk",
-  "version": "0.6.0",
+  "version": "0.9.0",
   "description": "ApiNow SDK · The endpoint vending machine",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,14 +18,13 @@
     "ethereum",
     "web3"
   ],
-  "author": "Your Name",
+  "author": "ApiNow.fun",
   "license": "MIT",
   "dependencies": {
     "@solana/spl-token": "^0.4.12",
     "@solana/web3.js": "^1.98.0",
     "bs58": "^6.0.0",
-    "ethers": "^6.13.5",
-    "node-fetch": "^3.3.2"
+    "ethers": "^6.13.5"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

@@ -1,141 +1,198 @@
 # ApiNow SDK
 
-A TypeScript SDK for interacting with ApiNow endpoints, supporting Ethereum (including Base), and Solana chains.
+A TypeScript SDK for interacting with ApiNow endpoints, supporting Ethereum (including Base), and Solana chains. Designed to work in Node.js, browsers, and edge environments like Cloudflare Workers.
 
 ## Features
 
 - Multi-chain support (Ethereum, Base, Solana)
-- Token transfers (ERC20 on ETH/Base, SPL on Solana)
-- Fast mode for quicker transaction processing
-- TypeScript types for better development experience
+- Native and Token transfers (ERC20 on ETH/Base, SPL on Solana)
+- Environment Agnostic: Uses global `fetch` for broad compatibility.
+- Optional RPC URL: Uses public RPCs by default, allows override.
+- Fast mode for quicker transaction processing (skips confirmation wait).
+- TypeScript types for better development experience.
 
 ## Installation
 
 ```bash
 npm install apinow-sdk
+# or
+yarn add apinow-sdk
 ```
 
 ## Usage
 
-### Basic Example
+### Basic Example (Using Default RPCs)
 
 ```typescript
 import apiNow from 'apinow-sdk';
 
-// Get endpoint info
-const info = await apiNow.info('https://apinow.fun/api/endpoints/your-endpoint');
+const ENDPOINT_URL = 'https://apinow.fun/api/endpoints/your-endpoint';
+const YOUR_PRIVATE_KEY = '0x...'; // Or Solana base58 private key
 
-// Send payment and get response
+// 1. Get endpoint info (payment details)
+const info = await apiNow.info(ENDPOINT_URL);
+// info will contain: { requiredAmount, walletAddress, httpMethod, tokenAddress, chain }
+console.log('Payment required:', info);
+
+// 2. Send payment and get the API response in one step
+try {
+  const response = await apiNow.infoBuyResponse(
+    ENDPOINT_URL,
+    YOUR_PRIVATE_KEY
+    // Optional: Add RPC URL override here if needed
+    // Optional: Add options like { fastMode: true } here
+  );
+  console.log('API Response:', response);
+} catch (error) {
+  console.error('Operation failed:', error);
+}
+```
+
+### Providing a Custom RPC URL
+
+If you need to use a specific RPC node:
+
+```typescript
+const CUSTOM_RPC_URL = 'https://your-custom-node.com';
+
 const response = await apiNow.infoBuyResponse(
-  'https://apinow.fun/api/endpoints/your-endpoint',
-  'YOUR_PRIVATE_KEY',
-  'YOUR_RPC_URL'
+  ENDPOINT_URL,
+  YOUR_PRIVATE_KEY,
+  CUSTOM_RPC_URL // Provide the RPC URL here
 );
 ```
 
 ### Fast Mode
 
-Fast mode skips transaction confirmation and only waits for the transaction to be in the mempool. This provides much faster responses but slightly less security:
+Fast mode skips waiting for transaction confirmation. This provides faster responses but relies on the transaction being accepted by the network (mempool/leader inclusion).
 
 ```typescript
 const response = await apiNow.infoBuyResponse(
-  'https://apinow.fun/api/endpoints/your-endpoint',
-  'YOUR_PRIVATE_KEY',
-  'YOUR_RPC_URL',
-  { fastMode: true }
+  ENDPOINT_URL,
+  YOUR_PRIVATE_KEY,
+  undefined, // Use default RPC
+  { fastMode: true } // Enable fast mode
 );
 ```
 
-### Chain-Specific Examples
+### Manual Payment (Separate Steps)
 
-#### Ethereum/Base
-
-```typescript
-// Native ETH/BASE transfer
-const txHash = await apiNow.buy(
-  'RECIPIENT_ADDRESS',
-  ethers.parseEther('0.1'),
-  'YOUR_PRIVATE_KEY',
-  'YOUR_RPC_URL',
-  'eth'
-);
-
-// ERC20 token transfer
-const txHash = await apiNow.buy(
-  'RECIPIENT_ADDRESS',
-  ethers.parseUnits('100', 18), // Use appropriate decimals
-  'YOUR_PRIVATE_KEY',
-  'YOUR_RPC_URL',
-  'eth',
-  'TOKEN_ADDRESS'
-);
-```
-
-#### Solana
+You can also perform the payment manually if needed.
 
 ```typescript
-// Native SOL transfer
-const txHash = await apiNow.buy(
-  'RECIPIENT_ADDRESS',
-  BigInt(LAMPORTS_PER_SOL), // 1 SOL
-  'YOUR_PRIVATE_KEY',
-  'YOUR_RPC_URL',
-  'sol'
-);
+import apiNow from 'apinow-sdk';
+import { ethers } from 'ethers'; // For amount conversion if needed
 
-// SPL token transfer
+const ENDPOINT_URL = 'https://apinow.fun/api/endpoints/your-endpoint';
+const YOUR_PRIVATE_KEY = '0x...';
+const YOUR_CUSTOM_RPC_URL = 'https://your-node.com'; // Optional
+
+// 1. Get Info
+const info = await apiNow.info(ENDPOINT_URL);
+const { requiredAmount, walletAddress, chain, tokenAddress } = info;
+
+// Convert requiredAmount (string) to bigint (smallest unit: wei/lamports)
+const amountBigInt = BigInt(requiredAmount);
+
+// 2. Send Payment
 const txHash = await apiNow.buy(
-  'RECIPIENT_ADDRESS',
-  BigInt(1000000), // Amount in raw units (e.g. 1.0 for 6 decimals)
-  'YOUR_PRIVATE_KEY',
-  'YOUR_RPC_URL',
-  'sol',
-  'TOKEN_ADDRESS'
+  walletAddress,
+  amountBigInt,
+  YOUR_PRIVATE_KEY,
+  chain, // Specify the chain from info
+  YOUR_CUSTOM_RPC_URL, // Optional: override RPC
+  tokenAddress, // Optional: specify token if required by endpoint
+  false // Optional: fastMode (defaults to false)
 );
+console.log(`Payment sent: ${txHash}`);
+
+// 3. Get API Response (after waiting for confirmation if not fastMode)
+// Add a delay here if needed
+await new Promise(resolve => setTimeout(resolve, 5000)); // Example 5s delay
+
+const apiResponse = await apiNow.txResponse(
+  ENDPOINT_URL,
+  txHash
+);
+console.log('API Response:', apiResponse);
 ```
 
 ## API Reference
 
 ### `info(endpoint: string): Promise<InfoResponse>`
 
-Gets information about an endpoint.
+Gets payment requirement information about an ApiNow endpoint.
 
-### `buy(walletAddress: string, amount: bigint, pkey: string, rpc: string, chain?: 'eth' | 'sol', tokenAddress?: string, fastMode?: boolean): Promise<string>`
+### `buy(walletAddress: string, amount: bigint, pkey: string, chain: 'eth' | 'sol' | 'base', rpcUrl?: string, tokenAddress?: string, fastMode?: boolean): Promise<string>`
 
-Sends a payment transaction. For tokens, provide the amount in raw units (e.g. wei for ERC20, raw units for SPL).
+Sends the required payment transaction to the specified address.
+- `amount`: The required amount in the smallest unit (wei for ETH/Base, lamports for SOL).
+- `chain`: The blockchain target ('eth', 'sol', 'base').
+- `rpcUrl` (Optional): Overrides the default public RPC URL.
+- `tokenAddress` (Optional): The contract address if paying with an ERC20/SPL token.
+- `fastMode` (Optional): If true, returns the transaction hash immediately without waiting for confirmation.
+
+Returns the transaction hash.
 
 ### `txResponse(endpoint: string, txHash: string, opts?: TxResponseOptions): Promise<any>`
 
-Gets the API response for a transaction.
+Fetches the final API response from the endpoint after a successful payment.
+- `txHash`: The hash of the payment transaction.
+- `opts` (Optional): Options like `{ method: 'POST', data: {...} }` to be passed to the underlying endpoint API call if needed (usually configured by the endpoint itself).
 
-### `infoBuyResponse(endpoint: string, pkey: string, rpc: string, opts?: TxResponseOptions & { fastMode?: boolean }): Promise<any>`
+Returns the endpoint's API response.
 
-Combines info, buy, and txResponse into a single call.
+### `infoBuyResponse(endpoint: string, pkey: string, rpcUrl?: string, opts?: TxResponseOptions & { fastMode?: boolean }): Promise<any>`
+
+Combines `info`, `buy`, and `txResponse` into a single call for convenience.
+- `rpcUrl` (Optional): Overrides the default public RPC URL for the payment.
+- `opts` (Optional): Contains `fastMode` boolean and any `TxResponseOptions`.
+
+Returns the final API response.
 
 ## Types
 
 ```typescript
-interface TxResponseOptions {
-  method?: string;
-  data?: any;
+// Defined in the SDK
+interface InfoResponse {
+  requiredAmount: string; // Amount in smallest unit (string)
+  walletAddress: string;
+  httpMethod: string; // Usually GET or POST for txResponse
+  tokenAddress?: string;
+  chain: 'eth' | 'sol' | 'base';
 }
 
-interface InfoResponse {
-  requiredAmount: string;
-  walletAddress: string;
-  httpMethod: string;
-  tokenAddress?: string;
-  chain: 'eth' | 'sol';
+interface TxResponseOptions {
+  method?: string; // HTTP method for txResponse call
+  data?: any;      // Body data for txResponse call
 }
 ```
 
+## Default RPC URLs
+
+- **Ethereum:** `https://rpc.ankr.com/eth`
+- **Base:** `https://mainnet.base.org`
+- **Solana:** `https://api.mainnet-beta.solana.com`
+
+You can override these by providing the `rpcUrl` parameter to `buy` or `infoBuyResponse`.
+
 ## Error Handling
 
-The SDK throws descriptive errors for various failure cases:
-- Invalid endpoint URLs
-- Transaction failures
-- Network issues
-- Invalid addresses or amounts
+The SDK throws descriptive errors for:
+- Invalid endpoint URLs or configurations.
+- RPC communication errors.
+- Transaction signing or sending failures.
+- Insufficient funds or token allowances.
+- Failures during API response fetching (`txResponse`).
+
+Wrap calls in `try...catch` blocks for robust error handling.
+
+## Compatibility
+
+This SDK uses the standard Web `fetch` API and avoids Node.js-specific modules, making it compatible with:
+- Node.js (v18+ recommended for global fetch)
+- Browsers (modern)
+- Edge environments (Cloudflare Workers, Vercel Edge Functions, etc.)
 
 ## License
 
