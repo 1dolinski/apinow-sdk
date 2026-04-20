@@ -1,38 +1,49 @@
 {
   "name": "apinow-sdk",
-  "version": "0.12.4",
-  "description": "ApiNow SDK · The endpoint vending machine",
+  "version": "0.26.0",
+  "description": "Pay-per-call API SDK & CLI for APINow.fun — endpoints + workflows, wraps x402 so you don't have to",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "bin": {
+    "apinow": "dist/cli.js"
+  },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "tsc",
-    "test": "jest",
     "prepare": "npm run build"
   },
   "keywords": [
     "api",
+    "x402",
+    "pay-per-call",
     "ethereum",
-    "web3"
+    "base",
+    "web3",
+    "ai",
+    "llm",
+    "cli",
+    "workflow",
+    "dag",
+    "user-factory"
   ],
   "author": "ApiNow.fun",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1dolinski/apinow"
+  },
+  "homepage": "https://apinow.fun",
   "dependencies": {
-    "apinow-sdk": "^0.11.19",
-    "body-parser": "^2.2.0",
-    "ethers": "^6.13.5",
-    "node-fetch": "^3.3.2"
+    "@x402/evm": "^2.3.1",
+    "@x402/fetch": "^2.3.0",
+    "commander": "^13.1.0",
+    "viem": "^2.38.3"
   },
   "devDependencies": {
-    "@types/express": "^5.0.2",
-    "@types/jest": "^29.5.12",
     "@types/node": "^20.11.24",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.1.2",
-    "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
 }

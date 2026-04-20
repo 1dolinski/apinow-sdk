@@ -1,225 +1,303 @@
-# ApiNow SDK
+# apinow-sdk
 
-A TypeScript SDK for interacting with ApiNow endpoints, supporting Ethereum and Base chains. This SDK simplifies payments by automatically handling `402 Payment Required` responses, including on-the-fly token swaps.
+> **AI Agents:** Install this skill for full SDK + CLI guidance:
+> ```
+> npx skills add https://github.com/1dolinski/apinow-sdk --skill apinow-sdk
+> ```
+> Or read the [SKILL.md](https://github.com/1dolinski/apinow-sdk/blob/main/skills/apinow-sdk/SKILL.md) directly.
 
-## Features
-
-- **Automatic x402 Payments**: Intercepts `402` responses to handle payment flows automatically.
-- **On-the-fly Token Swaps**: If you don't have the required payment token, the SDK can swap a common asset (like ETH, WETH, or USDC) to make the payment, powered by 0x.
-- **Flexible Pricing**: Supports endpoints that require a fixed token amount or a USD equivalent.
-- **Configurable Payment**: Prioritize which tokens you prefer to pay with.
-- **Multi-chain support**: Works with Ethereum and Base.
-- **Node.js Environment**: Designed to work in a Node.js environment.
-
-## Installation
+Pay-per-call API SDK & CLI for [APINow.fun](https://apinow.fun) — wraps [x402](https://www.x402.org/) so you don't have to.
 
 ```bash
 npm install apinow-sdk
-# or
-yarn add apinow-sdk
 ```
 
-## Usage
-
-The primary way to use the SDK is with the `execute` method. It's a single call that handles all the complexity of API payments for you.
+## SDK
 
 ```typescript
-import apiNow from 'apinow-sdk';
+import { createClient } from 'apinow-sdk';
 
-// The API endpoint you want to interact with.
-const ENDPOINT_URL = 'https://apinow.fun/api/endpoints/your-endpoint';
+const apinow = createClient({
+  privateKey: process.env.PRIVATE_KEY as `0x${string}`,
+});
 
-// Your private key, securely stored (e.g., in an environment variable).
-const YOUR_WALLET_PRIVATE_KEY = '0x...'; 
+// call any endpoint — x402 payment is handled automatically
+const data = await apinow.call('/api/endpoints/apinowfun/translate', {
+  method: 'POST',
+  body: { text: 'Hello world', targetLanguage: 'es' },
+});
 
-async function main() {
-  try {
-    // The `execute` method handles everything automatically.
-    // If the API requires a payment (402), the SDK will:
-    // 1. Find the best token you hold to pay with.
-    // 2. If needed, swap a common asset (like ETH or USDC) to the required token.
-    // 3. Send the payment transaction.
-    // 4. Retry the original request with proof of payment.
-    const response = await apiNow.execute(
-      ENDPOINT_URL,
-      YOUR_WALLET_PRIVATE_KEY,
-      { // Optional: request options
-        method: 'POST',
-        data: { query: 'your-data' }
-      }
-    );
+// semantic search
+const results = await apinow.search('weather forecast', 5);
 
-    console.log('API Response:', response);
-  } catch (error) {
-    console.error('Operation failed:', error);
-  }
-}
+// free endpoint info (cost, schema, wallet)
+const info = await apinow.info('gg402', 'horoscope');
 
-main();
+// call ANY external x402 endpoint — even ones not listed on APINow
+const price = await apinow.discoverPrice('https://stablesocial.dev/api/tiktok/profile');
+console.log(price.totalPrice); // upstream + proxy fee
+
+const tiktok = await apinow.callExternal('https://stablesocial.dev/api/tiktok/profile', {
+  method: 'POST',
+  body: { handle: 'someuser' },
+});
 ```
 
-## How It Works: Automatic Payments
+### `createClient(config)`
 
-When you call `execute`, the SDK makes a request to the endpoint. If the server responds with a `402 Payment Required` status, the SDK automatically performs the following steps:
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `privateKey` | `` `0x${string}` `` | — | EVM private key (required) |
+| `baseUrl` | `string` | `https://apinow.fun` | API base URL |
 
-1.  **Parses Payment Options**: The `402` response contains a list of accepted payment options. This can be a single token (fixed price) or multiple tokens (USD equivalent price, e.g., "$5 of USDC" or "$5 of ETH").
-2.  **Checks Balances**: It checks your wallet balance for each of the accepted payment tokens.
-3.  **Prioritizes Payment**: It attempts to pay using your tokens in a preferred order (default: `['USDC', 'WETH', 'ETH']`).
-4.  **Swaps if Needed**: If you don't have any of the *required* tokens, the SDK will try to swap one of your preferred assets for the required one. For example, it can swap your USDC to pay with a different required token.
-5.  **Pays and Retries**: Once the payment transaction is sent, the SDK automatically retries the original API request, now with proof of payment.
+Returns:
 
-## Configuration
+| Method | Description |
+|--------|-------------|
+| `call(endpoint, opts?)` | Call any APINow endpoint with automatic x402 payment |
+| `callExternal(url, opts?)` | Proxy any external x402 endpoint (discovery + payment) |
+| `discoverPrice(url, method?)` | Discover the x402 price of any URL (free) |
+| `search(query, limit?)` | Semantic search across all endpoints |
+| `info(ns, name)` | Get endpoint details (free) |
+| `listWorkflows(opts?)` | List workflows (filter by `creator`, `status`) |
+| `listMyWorkflows(opts?)` | List workflows created by your wallet |
+| `getWorkflow(id)` | Get workflow details (incl. `currentVersion`, `creatorWallet`) |
+| `createWorkflow(config)` | Create a workflow (seeds v1) |
+| `updateWorkflow(id, updates)` | Update a workflow (auto-bumps version on graph/price/splits change) |
+| `deleteWorkflow(id)` | Delete a workflow |
+| `runWorkflow(id, input)` | Run a workflow with automatic x402 payment |
+| `listWorkflowVersions(id)` | List versions (free) |
+| `getWorkflowVersion(id, vid)` | Get a specific version |
+| `createWorkflowVersion(id, updates)` | Creator — new version, defaults to active |
+| `setDefaultWorkflowVersion(id, vid)` | Promote/rollback a version |
+| `deleteWorkflowVersion(id, vid)` | Delete a non-default version |
+| `generateUI(opts)` | Start AI UI generation for an endpoint (async) |
+| `generateUIAndWait(opts)` | Generate UI and poll until complete |
+| `getGeneratedUI(id)` | Get a generated UI by ID |
+| `listGeneratedUIs(key, sort?)` | List generated UIs for an endpoint |
+| `checkFreeUI()` | Check free-tier generation eligibility |
+| `reactToUI(id, action, comment?)` | Like/dislike/comment on a generated UI |
+| `deleteGeneratedUI(id)` | Delete a generated UI |
+| `wallet` | Your wallet address |
+| `fetch` | Raw x402-wrapped `fetch` for advanced use |
 
-You can customize the behavior of the `execute` method with the `opts` and `paymentConfig` parameters.
+### Workflows
 
-### Request Options (`opts`)
-
-Passed as the third argument to `execute`. This corresponds to `TxResponseOptions`.
-
--   `method`: The HTTP method for your request (e.g., `'GET'`, `'POST'`). Defaults to `'GET'`.
--   `data`: The payload for your request. For `POST` requests, this is the JSON body. For `GET`, it's converted to query parameters.
-
-### Payment Configuration (`paymentConfig`)
-
-Passed as the fourth argument to `execute`. This corresponds to `X402PaymentConfig`.
-
--   `preferredTokens`: An array of token symbols (e.g., `['USDC', 'WETH']`) that you prefer to pay with. The SDK will check your balance of these tokens first.
+Workflows chain multiple x402 endpoints into a single paid DAG pipeline with automatic payment splitting. Each workflow is owned by a `creatorWallet` and tracks an immutable version history.
 
 ```typescript
-await apiNow.execute(
-  ENDPOINT_URL,
-  YOUR_WALLET_PRIVATE_KEY,
-  { method: 'POST', data: { /* ... */ } }, // opts
-  { preferredTokens: ['DAI', 'USDC'] }   // paymentConfig
-);
+// list workflows (optionally filter by creator)
+const { workflows } = await apinow.listWorkflows({ creator: '0x...', status: 'active' });
+
+// your own workflows
+const mine = await apinow.listMyWorkflows();
+
+// get workflow details (nodes, splits, pricing, currentVersion, creatorWallet)
+const workflow = await apinow.getWorkflow('f5d40784593aa972');
+
+// run a workflow — x402 payment covers all nodes + creator split
+const result = await apinow.runWorkflow('f5d40784593aa972', {
+  query: 'birthday gift ideas for a friend who loves cooking',
+});
 ```
 
-## Legacy Flow (Backward Compatibility)
+#### Versions & metadata cooldown
 
-For backward compatibility, the `infoBuyResponse` method is still available. It performs a less sophisticated multi-step payment process.
+- `PUT /api/workflows/{id}` with changes to `graph`, `totalPrice`, or `splits` auto-creates a new version.
+- `name` and `description` can only change **once every 7 days** per workflow (server returns `429` with `retryAfterMs`).
+- To iterate freely, create a new version — no cooldown.
 
 ```typescript
-const response = await apiNow.infoBuyResponse(
-  ENDPOINT_URL,
-  YOUR_WALLET_PRIVATE_KEY
-);
+// snapshot history
+const { versions } = await apinow.listWorkflowVersions('f5d40784593aa972');
+
+// bump price without renaming
+await apinow.createWorkflowVersion('f5d40784593aa972', {
+  totalPrice: '0.12',
+  changelog: 'Raised price after usage spike',
+});
+
+// rollback
+await apinow.setDefaultWorkflowVersion('f5d40784593aa972', 1);
 ```
 
-## API Reference
+### AI UI Generation
 
-### `execute(endpoint, privateKey, opts?, paymentConfig?)`
-Handles a request and its potential payment in a single, automatic call. This is the recommended method.
-
-### `infoBuyResponse(endpoint, privateKey, rpcUrl?, opts?)`
-(Legacy) Combines `info`, `buy`, and `txResponse` into a single call.
-
-### `info(endpoint)`
-(Legacy) Gets payment requirement information from an endpoint.
-
-### `buy(walletAddress, amount, privateKey, chain, ...)`
-(Legacy) Sends a payment transaction.
-
-### `txResponse(endpoint, txHash, opts?)`
-(Legacy) Fetches the API response after a payment has been made manually.
-
-## Types
+Generate interactive Arrow JS sandbox UIs for any endpoint — ideal for AI agents that need a visual interface.
 
 ```typescript
-// Response from a 402 error
-interface X402PaymentInfo {
-  challenge: string;
-  chain: 'eth' | 'base';
-  recipientAddress: string;
-  options: X402PaymentOption[];
-}
+// generate a UI and wait for it to complete
+const ui = await apinow.generateUIAndWait({
+  endpointName: 'horoscope',
+  namespace: 'gg402',
+  description: 'Get daily horoscope for a zodiac sign',
+  querySchema: { properties: { sign: { type: 'string' } } },
+  responseSchema: { properties: { horoscope: { type: 'string' } } },
+  customPrompt: 'Use a starry night theme',
+});
+console.log(ui.status); // 'complete'
+console.log(ui.source); // { "main.ts": "...", "main.css": "..." }
 
-// A single way to pay
-interface X402PaymentOption {
-  tokenAddress: string;
-  symbol: string;
-  amount: string;
-  decimals: number;
-}
+// or fire-and-forget + poll yourself
+const { id } = await apinow.generateUI({ endpointName: 'translate', namespace: 'apinowfun' });
+const doc = await apinow.getGeneratedUI(id); // poll until doc.status !== 'generating'
 
-// Configuration for payments
-interface X402PaymentConfig {
-  preferredTokens?: string[];
-}
+// list existing UIs for an endpoint
+const { uis } = await apinow.listGeneratedUIs('gg402/horoscope', 'popular');
 
-// Options for the API request itself
-interface TxResponseOptions {
-  method?: string; 
-  data?: any;      
-}
+// social
+await apinow.reactToUI(ui._id, 'like');
+await apinow.reactToUI(ui._id, 'comment', 'Great UI!');
+
+// check free-tier
+const { free, remaining } = await apinow.checkFreeUI();
 ```
 
-## Default RPC URLs
+## CLI
 
-- **Ethereum:** `https://rpc.ankr.com/eth`
-- **Base:** `https://mainnet.base.org`
+```bash
+npx apinow <command>
+```
 
-## Error Handling
+### `search` — find endpoints
 
-The SDK throws descriptive errors for:
-- Invalid endpoint URLs or configurations.
-- RPC communication errors.
-- Transaction signing or sending failures.
-- Insufficient funds or failure to find a valid swap.
-- Failures during API response fetching.
+```bash
+npx apinow search "weather api" --limit 5
+```
 
-Wrap calls in `try...catch` blocks for robust error handling.
+### `list` — browse endpoints
 
-## Compatibility
+```bash
+npx apinow list                          # popular endpoints
+npx apinow list --sort newest --limit 10
+npx apinow list --namespace gg402
+npx apinow list --search translate
+```
 
-This SDK uses `node-fetch`, making it compatible with:
-- Node.js (v18+ recommended)
+### `info` — endpoint details
 
-It is NOT directly compatible with browsers or edge environments that do not provide a Node.js-compatible `fetch` API.
+Shows cost, wallet, chain, input/output schemas, and examples.
+
+```bash
+npx apinow info gg402/horoscope
+```
+
+### `call` — call an endpoint (paid)
+
+```bash
+APINOW_WALLET_PKEY=0x... npx apinow call gg402/horoscope -d '{"sign":"aries"}'
+npx apinow call ns/endpoint -m GET -k 0xYOUR_KEY
+```
+
+| Flag | Description |
+|------|-------------|
+| `-d, --data <json>` | JSON request body |
+| `-m, --method <method>` | HTTP method (default: from endpoint) |
+| `-k, --key <privateKey>` | Wallet key (or set `APINOW_WALLET_PKEY`) |
+
+### `workflows` — list workflows
+
+```bash
+npx apinow workflows
+npx apinow workflows --status active --limit 10
+npx apinow workflows --creator 0x32e8...E934
+```
+
+### `workflow` — workflow details
+
+```bash
+npx apinow workflow 90931d9c8fb94df9
+```
+
+### `run-workflow` — run a workflow (paid)
+
+```bash
+APINOW_WALLET_PKEY=0x... npx apinow run-workflow 90931d9c8fb94df9 -d '{"query":"birthday gift ideas"}'
+```
+
+| Flag | Description |
+|------|-------------|
+| `-d, --data <json>` | JSON input (default: `{"query":"hello world"}`) |
+| `-k, --key <privateKey>` | Wallet key (or set `APINOW_WALLET_PKEY`) |
+
+### `ui-generate` — generate an AI UI for an endpoint
+
+Generates an interactive Arrow JS sandbox UI. Automatically fetches the endpoint's schema and examples, sends the generation request, and polls until complete.
+
+```bash
+APINOW_WALLET_PKEY=0x... npx apinow ui-generate gg402/horoscope
+APINOW_WALLET_PKEY=0x... npx apinow ui-generate gg402/horoscope --prompt "dark theme with animations"
+npx apinow ui-generate ns/endpoint --no-wait -k 0xKEY  # returns immediately with ID
+```
+
+| Flag | Description |
+|------|-------------|
+| `-p, --prompt <text>` | Custom instructions for the UI |
+| `--no-wait` | Return immediately without polling |
+| `--timeout <ms>` | Polling timeout (default: 120000) |
+| `-k, --key <privateKey>` | Wallet key (or set `APINOW_WALLET_PKEY`) |
+
+### `ui-list` — list generated UIs
+
+```bash
+npx apinow ui-list gg402/horoscope
+npx apinow ui-list gg402/horoscope --sort recent
+```
+
+### `ui-get` — get a generated UI by ID
+
+```bash
+npx apinow ui-get 665a1b2c3d4e5f6a7b8c9d0e
+npx apinow ui-get 665a1b2c3d4e5f6a7b8c9d0e --source-only  # just the Arrow JS source
+```
+
+### `ui-like` / `ui-dislike` / `ui-comment` — social actions
+
+```bash
+APINOW_WALLET_PKEY=0x... npx apinow ui-like <id>
+APINOW_WALLET_PKEY=0x... npx apinow ui-dislike <id>
+APINOW_WALLET_PKEY=0x... npx apinow ui-comment <id> -m "Nice UI!"
+```
+
+### `ui-delete` — delete a generated UI
+
+```bash
+APINOW_WALLET_PKEY=0x... npx apinow ui-delete <id>
+```
+
+### `ui-free-check` — check free-tier eligibility
+
+```bash
+APINOW_WALLET_PKEY=0x... npx apinow ui-free-check
+```
+
+### `discover` — check the x402 price of any URL (free)
+
+```bash
+npx apinow discover https://stablesocial.dev/api/tiktok/profile
+npx apinow discover https://stablesocial.dev/api/tiktok/posts --method POST
+```
+
+### `call-external` — call any external x402 endpoint (paid)
+
+Proxies through APINow — you pay upstream price + a small proxy fee, and the server wallet pays the upstream service.
+
+```bash
+APINOW_WALLET_PKEY=0x... npx apinow call-external https://stablesocial.dev/api/tiktok/profile -d '{"handle":"someuser"}'
+```
+
+| Flag | Description |
+|------|-------------|
+| `-d, --data <json>` | JSON body to send to the target |
+| `-m, --method <method>` | HTTP method (default: POST) |
+| `-H, --header <kv...>` | Extra headers as `key:value` pairs |
+| `-k, --key <privateKey>` | Wallet key (or set `APINOW_WALLET_PKEY`) |
+
+## Requirements
+
+- Node.js v18+
+- EVM wallet with funds on Base for paid endpoints
 
 ## License
 
 MIT
-
-## Examples
-
-This project includes a test server and a test runner to demonstrate various payment scenarios.
-
-1.  **Create a `.env` file** in the root of the project and add your wallet's private key:
-    ```
-    PRIVATE_KEY=your_private_key_here
-    ```
-
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-
-3.  **Start the test server:**
-    The test server simulates an API that requires different types of payments.
-    ```bash
-    node test/test-server.js
-    ```
-
-4.  **Run the test runner:**
-    In a separate terminal, run the test runner to execute a series of transactions against the test server.
-    ```bash
-    node test/test-runner.js
-    ```
-
-This will demonstrate:
-- Paying with USDC
-- Paying with a custom ERC20 token
-- Paying with a token priced in USDC
-- Fallback token payments
-- Handling various error conditions
-
-## Local Development
-
-1. **Build the project:**
-   ```bash
-   npm run build
-   ```
-
-This will compile the TypeScript source files into JavaScript in the `dist` directory.
-
-## Contributing
