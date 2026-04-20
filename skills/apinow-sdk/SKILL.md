@@ -238,10 +238,50 @@ apinow ui-delete <id>
 
 ## Config
 
+Two config shapes — pick the one that matches your environment.
+
+### Server / agent (raw private key)
+
 | Option | Type | Default |
 |--------|------|---------|
 | `privateKey` | `` `0x${string}` `` | Required — EVM private key |
 | `baseUrl` | `string` | `https://apinow.fun` |
+
+Enables both paid x402 calls and signed-auth writes. Used by AI agents with `APINOW_WALLET_PKEY`.
+
+### Browser / connected wallet
+
+| Option | Type | Default |
+|--------|------|---------|
+| `signer` | `(message: string) => Promise<string>` | Required — EIP-191 personal_sign. Plug in `walletClient.signMessage`, ethers `signer.signMessage`, Privy, Bankr, etc. |
+| `address` | `` `0x${string}` `` | Required — the connected wallet address |
+| `baseUrl` | `string` | `https://apinow.fun` |
+| `paidFetch` | `typeof fetch` | Optional x402-wrapped fetch (see skill.md `useX402Fetch`) if you want paid calls from the browser |
+
+Enables signed-auth writes out of the box. Paid calls (`call`, `runWorkflow`, `callExternal`) throw unless you supply `paidFetch`.
+
+```typescript
+// wagmi
+const { address } = useAccount();
+const { data: walletClient } = useWalletClient();
+const apinow = useMemo(
+  () => walletClient && address
+    ? createClient({
+        address,
+        signer: (msg) => walletClient.signMessage({ message: msg }),
+      })
+    : null,
+  [walletClient, address],
+);
+
+// ethers
+const provider = new ethers.BrowserProvider(window.ethereum);
+const signer = await provider.getSigner();
+const apinow = createClient({
+  address: await signer.getAddress(),
+  signer: (msg) => signer.signMessage(msg),
+});
+```
 
 Requires Node.js v18+ and an EVM wallet with funds on Base for paid calls.
 

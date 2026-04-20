@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name('apinow')
   .description('CLI for APINow.fun — search, inspect, and call pay-per-request APIs')
-  .version('0.26.0');
+  .version('0.27.0');
 
 // ─── Helpers ───
 

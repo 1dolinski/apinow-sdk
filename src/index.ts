@@ -29,10 +29,36 @@ export interface PriceDiscovery {
   upstreamAccepts: any[];
 }
 
-export interface ApinowConfig {
+/**
+ * Agent/server path — signs everything with a raw private key. Enables
+ * both x402 paid calls and signed-auth write calls.
+ */
+export interface ApinowServerConfig {
   privateKey: `0x${string}`;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
+}
+
+/**
+ * Browser/wallet path — you provide a `signer` (any EIP-191 `personal_sign`
+ * function, e.g. from wagmi's `walletClient.signMessage`) and the connected
+ * `address`. Enables signed-auth writes. Paid x402 calls are NOT provided by
+ * this path — construct the x402 fetch yourself (see useX402Fetch pattern in
+ * the skill docs) and pass it to `paidFetch` if you need unified behaviour.
+ */
+export interface ApinowBrowserConfig {
+  signer: (message: string) => Promise<`0x${string}` | string>;
+  address: `0x${string}`;
+  baseUrl?: string;
+  fetch?: typeof globalThis.fetch;
+  /** Optional externally-prepared x402 fetch for paid calls. */
+  paidFetch?: typeof globalThis.fetch;
+}
+
+export type ApinowConfig = ApinowServerConfig | ApinowBrowserConfig;
+
+function isServerConfig(c: ApinowConfig): c is ApinowServerConfig {
+  return 'privateKey' in c && typeof (c as any).privateKey === 'string';
 }
 
 export interface GenerateUIOptions {
@@ -86,33 +112,55 @@ async function followRedirects(res: Response): Promise<Response> {
 }
 
 export function createClient(config: ApinowConfig) {
-  const { privateKey, baseUrl = APINOW_BASE, fetch: customFetch } = config;
+  const server = isServerConfig(config);
+  const baseUrl = config.baseUrl ?? APINOW_BASE;
+  const customFetch = config.fetch;
 
-  const account = privateKeyToAccount(privateKey);
-  const client = new x402Client();
-  registerExactEvmScheme(client, { signer: account });
-  const safeFetch = makeSafeFetch(customFetch ?? fetch);
-  const rawFetchWithPayment = wrapFetchWithPayment(safeFetch, client);
-  const fetchWithPayment = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const res = await rawFetchWithPayment(input, init);
-    return followRedirects(res);
-  }) as typeof globalThis.fetch;
+  // Resolve address + signer from whichever config shape the caller passed.
+  const account = server ? privateKeyToAccount(config.privateKey) : null;
+  const address: `0x${string}` = server
+    ? account!.address
+    : (config.address.toLowerCase() as `0x${string}`);
+  const signMessage: (msg: string) => Promise<string> = server
+    ? (msg) => account!.signMessage({ message: msg })
+    : (msg) => Promise.resolve(config.signer(msg) as Promise<string> | string).then((s) => String(s));
+
+  // x402 paid fetch — only available when a private key is provided. Browsers
+  // should build their own x402 fetch (see skill.md useX402Fetch) and pass it
+  // as `paidFetch` to fall back through here.
+  const paidFetchExternal = !server ? config.paidFetch : undefined;
+  const fetchWithPayment: typeof globalThis.fetch = server
+    ? (() => {
+        const client = new x402Client();
+        registerExactEvmScheme(client, { signer: account! });
+        const safeFetch = makeSafeFetch(customFetch ?? fetch);
+        const rawFetchWithPayment = wrapFetchWithPayment(safeFetch, client);
+        return (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const res = await rawFetchWithPayment(input, init);
+          return followRedirects(res);
+        }) as typeof globalThis.fetch;
+      })()
+    : (paidFetchExternal ??
+        (() => {
+          throw new Error(
+            'createClient: paid calls require a `privateKey` config or an explicit `paidFetch`. Pass an x402-wrapped fetch to make paid calls from the browser.',
+          );
+        }) as any);
 
   /**
    * Produce an `Authorization: Bearer <msg>||<sig>||<addr>` header signed by
-   * the wallet's private key. Backend verifies with ethers.recoverAddress and
-   * rejects messages older than ~10 min.
-   *
-   * Exposed as a public helper so agents can sign custom write calls too.
+   * the wallet. Backend verifies with ethers.recoverAddress and rejects
+   * messages older than ~10 min. Works for both server (privateKey) and
+   * browser (walletClient.signMessage) configs.
    */
   async function signAuthHeader(): Promise<Record<string, string>> {
     const issuedAt = new Date().toISOString();
     const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    const message = `APINow auth\naddress: ${account.address}\nissuedAt: ${issuedAt}\nnonce: ${nonce}`;
-    const signature = await account.signMessage({ message });
+    const message = `APINow auth\naddress: ${address}\nissuedAt: ${issuedAt}\nnonce: ${nonce}`;
+    const signature = await signMessage(message);
     return {
-      Authorization: `Bearer ${message}||${signature}||${account.address}`,
-      'x-wallet-address': account.address,
+      Authorization: `Bearer ${message}||${signature}||${address}`,
+      'x-wallet-address': address,
     };
   }
 
@@ -143,7 +191,7 @@ export function createClient(config: ApinowConfig) {
   }
 
   return {
-    wallet: account.address,
+    wallet: address,
 
     /**
      * Produce a signed `Authorization` header for custom write calls.
@@ -309,7 +357,7 @@ export function createClient(config: ApinowConfig) {
      * List workflows you created (convenience for `listWorkflows({ creator: yourWallet })`).
      */
     async listMyWorkflows(opts: { status?: string; limit?: number } = {}): Promise<any> {
-      return this.listWorkflows({ ...opts, creator: account.address });
+      return this.listWorkflows({ ...opts, creator: address });
     },
 
     // ─── Workflow Versions ───
@@ -556,7 +604,7 @@ export function createClient(config: ApinowConfig) {
       const res = await fetch(`${baseUrl}/api/ai/generate-ui`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...opts, walletAddress: account.address }),
+        body: JSON.stringify({ ...opts, walletAddress: address }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -594,7 +642,7 @@ export function createClient(config: ApinowConfig) {
      * Check free-tier UI generation eligibility for a wallet.
      */
     async checkFreeUI(): Promise<{ free: boolean; remaining: number }> {
-      const params = new URLSearchParams({ checkFree: '1', wallet: account.address });
+      const params = new URLSearchParams({ checkFree: '1', wallet: address });
       const res = await fetch(`${baseUrl}/api/ai/generate-ui?${params}`);
       if (!res.ok) throw new Error(`Failed to check free tier: ${res.status}`);
       return res.json();
@@ -604,7 +652,7 @@ export function createClient(config: ApinowConfig) {
      * Like, dislike, or comment on a generated UI.
      */
     async reactToUI(id: string, action: 'like' | 'dislike' | 'comment', comment?: string): Promise<any> {
-      const body: any = { id, action, wallet: account.address };
+      const body: any = { id, action, wallet: address };
       if (comment) body.comment = comment;
       const res = await fetch(`${baseUrl}/api/ai/generate-ui`, {
         method: 'PATCH',
@@ -625,7 +673,7 @@ export function createClient(config: ApinowConfig) {
       const res = await fetch(`${baseUrl}/api/ai/generate-ui`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, wallet: account.address }),
+        body: JSON.stringify({ id, wallet: address }),
       });
       if (!res.ok) {
         const text = await res.text();

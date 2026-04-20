@@ -1,6 +1,6 @@
 {
   "name": "apinow-sdk",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "description": "Pay-per-call API SDK & CLI for APINow.fun — endpoints + workflows, wraps x402 so you don't have to",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
